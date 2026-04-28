@@ -1,0 +1,178 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
+// -------- ASCENDING SORT (Parent) --------
+void ascSort(int a[], int n) {
+    int i, j, temp;
+
+    for(i = 0; i < n - 1; i++) {
+        for(j = 0; j < n - i - 1; j++) {
+            if(a[j] > a[j + 1]) {
+                temp = a[j];
+                a[j] = a[j + 1];
+                a[j + 1] = temp;
+            }
+        }
+    }
+}
+
+// -------- DESCENDING SORT (Child) --------
+void descSort(int a[], int n) {
+    int i, j, temp;
+
+    for(i = 0; i < n - 1; i++) {
+        for(j = 0; j < n - i - 1; j++) {
+            if(a[j] < a[j + 1]) {
+                temp = a[j];
+                a[j] = a[j + 1];
+                a[j + 1] = temp;
+            }
+        }
+    }
+}
+
+// -------- PRINT FUNCTION --------
+void print(int a[], int n) {
+    int i;
+    for(i = 0; i < n; i++) {
+        printf("%d ", a[i]);
+    }
+    printf("\n");
+}
+
+int main() {
+    int n, i;
+    int arr[20];
+
+    printf("Enter number of elements: ");
+    scanf("%d", &n);
+
+    printf("Enter elements:\n");
+    for(i = 0; i < n; i++) {
+        scanf("%d", &arr[i]);
+    }
+
+    // 🔹 CASE 1: NORMAL (with wait)
+    printf("\n--- NORMAL CASE ---\n");
+
+    pid_t pid = fork();
+
+    if(pid == 0) {  // CHILD
+        printf("\n[Child BEFORE] PID=%d PPID=%d\n", getpid(), getppid());
+
+        descSort(arr, n);
+        printf("Child Descending: ");
+        print(arr, n);
+
+        printf("[Child AFTER] PID=%d PPID=%d\n", getpid(), getppid());
+        exit(0);
+    }
+    else {  // PARENT
+        printf("\n[Parent BEFORE] PID=%d PPID=%d\n", getpid(), getppid());
+
+        ascSort(arr, n);
+        printf("Parent Ascending: ");
+        print(arr, n);
+
+        wait(NULL);
+
+        printf("[Parent AFTER WAIT] PID=%d PPID=%d\n", getpid(), getppid());
+    }
+
+    // 🔹 CASE 2: ZOMBIE
+    printf("\n--- ZOMBIE CASE ---\n");
+
+    pid = fork();
+
+    if(pid == 0) {  // CHILD
+        printf("\n[Child BEFORE] PID=%d PPID=%d\n", getpid(), getppid());
+
+        descSort(arr, n);
+        printf("Child Descending: ");
+        print(arr, n);
+
+        printf("[Child EXITING] PID=%d PPID=%d\n", getpid(), getppid());
+        exit(0);  // child becomes zombie
+    }
+    else {  // PARENT
+        printf("\n[Parent BEFORE] PID=%d PPID=%d\n", getpid(), getppid());
+
+        ascSort(arr, n);
+        printf("Parent Ascending: ");
+        print(arr, n);
+
+        printf("Parent sleeping... Child is ZOMBIE\n");
+        sleep(5);
+
+        printf("[Parent AFTER SLEEP] PID=%d PPID=%d\n", getpid(), getppid());
+    }
+
+    // 🔹 CASE 3: ORPHAN
+    printf("\n--- ORPHAN CASE ---\n");
+
+    pid = fork();
+
+    if(pid == 0) {  // CHILD
+        printf("\n[Child BEFORE] PID=%d PPID=%d\n", getpid(), getppid());
+
+        sleep(3);
+
+        descSort(arr, n);
+        printf("Child Descending: ");
+        print(arr, n);
+
+        printf("[Child AFTER] PID=%d NEW PPID=%d\n", getpid(), getppid());
+    }
+    else {  // PARENT
+        printf("\n[Parent BEFORE] PID=%d PPID=%d\n", getpid(), getppid());
+
+        ascSort(arr, n);
+        printf("Parent Ascending: ");
+        print(arr, n);
+
+        printf("[Parent EXITING] PID=%d PPID=%d\n", getpid(), getppid());
+        exit(0);
+    }
+
+    return 0;
+}
+✅ Sample Output
+🔹 Input
+Enter number of elements: 5
+Enter elements:
+5 6 4 7 3
+🔹 NORMAL CASE (with wait)
+--- NORMAL CASE ---
+
+[Parent BEFORE] PID=2000 PPID=1500
+Parent Ascending: 3 4 5 6 7
+
+[Child BEFORE] PID=2001 PPID=2000
+Child Descending: 7 6 5 4 3
+[Child AFTER] PID=2001 PPID=2000
+
+[Parent AFTER WAIT] PID=2000 PPID=1500
+🔹 ZOMBIE CASE
+--- ZOMBIE CASE ---
+
+[Parent BEFORE] PID=2000 PPID=1500
+Parent Ascending: 3 4 5 6 7
+
+[Child BEFORE] PID=2002 PPID=2000
+Child Descending: 7 6 5 4 3
+[Child EXITING] PID=2002 PPID=2000
+
+Parent sleeping... Child is ZOMBIE
+[Parent AFTER SLEEP] PID=2000 PPID=1500
+🔹 ORPHAN CASE
+--- ORPHAN CASE ---
+
+[Parent BEFORE] PID=2000 PPID=1500
+Parent Ascending: 3 4 5 6 7
+[Parent EXITING] PID=2000 PPID=1500
+
+[Child BEFORE] PID=2003 PPID=2000
+Child Descending: 7 6 5 4 3
+[Child AFTER] PID=2003 NEW PPID=1
