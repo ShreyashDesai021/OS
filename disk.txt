@@ -391,7 +391,7 @@ Next Track          Tracks Traversed
 
 Total Seek Length = 129
 Average Seek Length = 25.80
-✅ 6. CLOOK
+✅ 6. CSCAN
 #include <stdio.h>
 #include <stdlib.h>
 
