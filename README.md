@@ -1,3 +1,4 @@
+``
 Assign 3:
 
 import java.security.*;
@@ -68,30 +69,12 @@ public class RSATiming {
                 "All decrypted messages match the original.");
     }
 }
+``
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+``
 Assign 4:
 
 import java.nio.file.*;
@@ -181,11 +164,11 @@ public class CustomFileCipher {
                     + Arrays.equals(input, decrypt(output, key)));
     }
 }
+``
 
 
 
-
-
+``
 Assign 5:
 
 
@@ -274,12 +257,10 @@ public class DHMITM {
         System.out.println("3. Authenticate the exchange using a pre-shared secret and MAC.");
     }
 }
+``
 
 
-
-
-
-
+``
 Assign 6:
 
 
@@ -327,7 +308,10 @@ public class SHA1Demo {
                     : "Warning: Hash mismatch");
     }
 }
+``
 
+
+``
 Assign 7:
 
 
@@ -407,20 +391,11 @@ public class DSADemo {
         sc.close();
     }
 }
+``
 
 
 
-
-
-
-
-
-
-
-
-
-
-
+``
 Assign 9:
 
 import java.io.*;
@@ -575,4 +550,4 @@ public class SecureImageTransfer {
         }
     }
 }
-
+``
