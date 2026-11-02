@@ -1,0 +1,578 @@
+Assign 3:
+
+import java.security.*;
+import java.util.Arrays;
+import javax.crypto.Cipher;
+
+public class RSATiming {
+    public static void main(String[] args) throws Exception {
+
+        int[] keySizes = {1024, 2048, 3072};
+        int[] messageBits = {128, 256, 384};
+        int trials = 30;
+        SecureRandom random = new SecureRandom();
+
+        System.out.printf("%-8s %-9s %-12s %-12s %-12s%n",
+                "Key(bits)", "Msg(bits)", "KeyGen(ms)",
+                "Encrypt(ms)", "Decrypt(ms)");
+
+        for (int keySize : keySizes) {
+            KeyPairGenerator generator =
+                    KeyPairGenerator.getInstance("RSA");
+            generator.initialize(keySize);
+
+            long keyTime = 0;
+            KeyPair pair = null;
+
+            for (int i = 0; i < 3; i++) {
+                long start = System.nanoTime();
+                pair = generator.generateKeyPair();
+                keyTime += System.nanoTime() - start;
+            }
+
+            for (int bits : messageBits) {
+                byte[] message = new byte[bits / 8];
+                random.nextBytes(message);
+                message[0] |= (byte) 0x80;
+
+                Cipher cipher = Cipher.getInstance(
+                        "RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
+
+                long encTime = 0, decTime = 0;
+
+                for (int i = 0; i < trials; i++) {
+                    long start = System.nanoTime();
+                    cipher.init(Cipher.ENCRYPT_MODE,
+                            pair.getPublic());
+                    byte[] encrypted = cipher.doFinal(message);
+                    encTime += System.nanoTime() - start;
+
+                    start = System.nanoTime();
+                    cipher.init(Cipher.DECRYPT_MODE,
+                            pair.getPrivate());
+                    byte[] decrypted = cipher.doFinal(encrypted);
+                    decTime += System.nanoTime() - start;
+
+                    if (!Arrays.equals(message, decrypted))
+                        throw new Exception("Decryption failed");
+                }
+
+                System.out.printf(
+                        "%-8d %-9d %-12.2f %-12.3f %-12.3f%n",
+                        keySize, bits, keyTime / 3e6,
+                        encTime / (trials * 1e6),
+                        decTime / (trials * 1e6));
+            }
+        }
+        System.out.println(
+                "All decrypted messages match the original.");
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Assign 4:
+
+import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.util.*;
+
+public class CustomFileCipher {
+    static final int N = 8;
+
+    static byte[] encrypt(byte[] plain, byte[] key) {
+        byte[] out = new byte[N + plain.length];
+        byte[] nonce = new byte[N];
+        new SecureRandom().nextBytes(nonce);
+        System.arraycopy(nonce, 0, out, 0, N);
+
+        int previous = out[0] & 255;
+
+        for (int i = 0; i < plain.length; i++) {
+            int k = (key[i % key.length] & 255)
+                    ^ (out[i % N] & 255);
+
+            int x = (plain[i] & 255) ^ k;
+            x = (x + previous + i) & 255;
+
+            int c = ((x << 3) | (x >>> 5)) & 255;
+            out[N + i] = (byte) c;
+            previous = c;
+        }
+        return out;
+    }
+
+    static byte[] decrypt(byte[] encrypted, byte[] key) {
+        if (encrypted.length < N)
+            throw new IllegalArgumentException("Invalid file");
+
+        byte[] plain = new byte[encrypted.length - N];
+        int previous = encrypted[0] & 255;
+
+        for (int i = 0; i < plain.length; i++) {
+            int c = encrypted[N + i] & 255;
+
+            int x = ((c >>> 3) | (c << 5)) & 255;
+            x = (x - previous - i) & 255;
+
+            int k = (key[i % key.length] & 255)
+                    ^ (encrypted[i % N] & 255);
+
+            plain[i] = (byte) (x ^ k);
+            previous = c;
+        }
+        return plain;
+    }
+
+    public static void main(String[] args) throws Exception {
+        Scanner sc = new Scanner(System.in);
+
+        System.out.print("1. Encrypt  2. Decrypt: ");
+        String choice = sc.nextLine();
+        if (!choice.equals("1") && !choice.equals("2"))
+            return;
+
+        System.out.print("File path: ");
+        Path file = Path.of(sc.nextLine());
+
+        System.out.print("Secret key: ");
+        byte[] key = sc.nextLine()
+                .getBytes(StandardCharsets.UTF_8);
+
+        if (key.length == 0)
+            throw new IllegalArgumentException("Key cannot be empty");
+
+        byte[] input = Files.readAllBytes(file);
+
+        byte[] output = choice.equals("1")
+                ? encrypt(input, key)
+                : decrypt(input, key);
+
+        Path saved = Path.of(file + (choice.equals("1")
+                ? ".enc" : ".dec"));
+
+        Files.write(saved, output);
+        System.out.println("Saved: " + saved);
+
+        if (choice.equals("1"))
+            System.out.println("Correct recovery: "
+                    + Arrays.equals(input, decrypt(output, key)));
+    }
+}
+
+
+
+
+
+Assign 5:
+
+
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+
+public class DHMITM {
+
+    static int power(int base, int exp, int mod) {
+        int result = 1;
+        for (int i = 0; i < exp; i++)
+            result = result * base % mod;
+        return result;
+    }
+
+    // Simple XOR for demonstrating message interception
+    static byte[] xor(byte[] data, int key) {
+        byte[] result = new byte[data.length];
+        for (int i = 0; i < data.length; i++)
+            result[i] = (byte) (data[i] ^ key);
+        return result;
+    }
+
+    public static void main(String[] args) {
+        int p = 23, g = 5;
+        int a = 6, b = 15;
+
+        int A = power(g, a, p);
+        int B = power(g, b, p);
+
+        int aliceKey = power(B, a, p);
+        int bobKey = power(A, b, p);
+
+        System.out.println("NORMAL DIFFIE-HELLMAN");
+        System.out.println("Alice public: " + A
+                + ", Bob public: " + B);
+        System.out.println("Alice key: " + aliceKey
+                + ", Bob key: " + bobKey);
+        System.out.println("Keys equal: " + (aliceKey == bobKey));
+
+        // Eve replaces both public values
+        int eToBob = 7, eToAlice = 3;
+        int fakeA = power(g, eToBob, p);
+        int fakeB = power(g, eToAlice, p);
+
+        int keyAlice = power(fakeB, a, p);
+        int keyEveAlice = power(A, eToAlice, p);
+        int keyBob = power(fakeA, b, p);
+        int keyEveBob = power(B, eToBob, p);
+
+        System.out.println("\nMAN-IN-THE-MIDDLE ATTACK");
+        System.out.println("Eve sends " + fakeB
+                + " to Alice instead of " + B);
+        System.out.println("Eve sends " + fakeA
+                + " to Bob instead of " + A);
+        System.out.println("Alice and Eve keys: "
+                + keyAlice + " and " + keyEveAlice);
+        System.out.println("Bob and Eve keys: "
+                + keyBob + " and " + keyEveBob);
+
+        String message = "PAY 100";
+
+        byte[] fromAlice = xor(
+                message.getBytes(StandardCharsets.UTF_8), keyAlice);
+        byte[] readByEve = xor(fromAlice, keyEveAlice);
+
+        String altered = "PAY 900";
+        byte[] toBob = xor(
+                altered.getBytes(StandardCharsets.UTF_8), keyEveBob);
+        byte[] readByBob = xor(toBob, keyBob);
+
+        System.out.println("\nAlice sends: " + message);
+        System.out.println("Eve reads: " +
+                new String(readByEve, StandardCharsets.UTF_8));
+        System.out.println("Eve forwards: " + altered);
+        System.out.println("Bob receives: " +
+                new String(readByBob, StandardCharsets.UTF_8));
+
+        System.out.println("Eve successfully intercepted the message: "
+                + Arrays.equals(readByEve,
+                message.getBytes(StandardCharsets.UTF_8)));
+
+        System.out.println("\nMITIGATION:");
+        System.out.println("1. Sign DH public values and verify using trusted public keys.");
+        System.out.println("2. Use authenticated TLS with proper certificate validation.");
+        System.out.println("3. Authenticate the exchange using a pre-shared secret and MAC.");
+    }
+}
+
+
+
+
+
+
+Assign 6:
+
+
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
+import java.util.Scanner;
+
+public class SHA1Demo {
+    static String sha1(String text) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-1");
+        byte[] hash = md.digest(
+                text.getBytes(StandardCharsets.UTF_8));
+
+        StringBuilder hex = new StringBuilder();
+
+        for (byte b : hash)
+            hex.append(String.format("%02x", b & 255));
+
+        return hex.toString();
+    }
+
+    public static void main(String[] args) throws Exception {
+        Scanner sc = new Scanner(System.in);
+        System.out.print("Enter text: ");
+        String original = sc.nextLine();
+        String modified = original + "!";
+
+        String hash1 = sha1(original);
+        String hash2 = sha1(modified);
+        System.out.println("Original text: " + original);
+        System.out.println("Original SHA-1: " + hash1);
+        System.out.println("Modified text: " + modified);
+        System.out.println("Modified SHA-1: " + hash2);
+
+        System.out.println("Integrity maintained: "
+                + hash1.equals(hash2));
+
+        System.out.print("Enter official SHA-1 (Enter to skip): ");
+        String official = sc.hasNextLine()
+                ? sc.nextLine().trim() : "";
+
+        if (!official.isEmpty())
+            System.out.println(hash1.equalsIgnoreCase(official)
+                    ? "Verified: Hash matches"
+                    : "Warning: Hash mismatch");
+    }
+}
+
+Assign 7:
+
+
+import java.security.*;
+import java.nio.charset.StandardCharsets;
+import java.util.HexFormat;
+import java.util.Scanner;
+
+public class DSADemo {
+    public static void main(String[] args) throws Exception {
+        Scanner sc = new Scanner(System.in);
+
+        // STEP 1: Generate DSA Private and Public Keys
+        KeyPairGenerator generator =
+                KeyPairGenerator.getInstance("DSA");
+        generator.initialize(2048);
+
+        KeyPair vendor = generator.generateKeyPair();
+        PrivateKey privateKey = vendor.getPrivate();
+        PublicKey publicKey = vendor.getPublic();
+
+        System.out.println("===== DIGITAL SIGNATURE USING DSA =====");
+
+        // STEP 2: Sender enters the message
+        System.out.print("\nEnter original message: ");
+        String message = sc.nextLine();
+        byte[] messageBytes = message.getBytes(StandardCharsets.UTF_8);
+
+        System.out.println("\n--- SENDER ---");
+        System.out.println("Original Message: " + message);
+
+        // STEP 3: Generate Digital Signature using Private Key
+        Signature signer = Signature.getInstance("SHA256withDSA");
+        signer.initSign(privateKey);
+        signer.update(messageBytes);
+
+        byte[] signature = signer.sign();
+
+        System.out.println("\nDigital Signature Generated Successfully!");
+        System.out.println("Signature: " + HexFormat.of().formatHex(signature));
+
+        // STEP 4: Receiver verifies using Public Key
+        System.out.println("\n--- RECEIVER ---");
+
+        Signature verifier = Signature.getInstance("SHA256withDSA");
+        verifier.initVerify(publicKey);
+        verifier.update(messageBytes);
+
+        if (verifier.verify(signature)) {
+            System.out.println("Original Message Verification: SUCCESS");
+            System.out.println("Authentication: Valid");
+            System.out.println("Message Integrity: Verified");
+        } else {
+            System.out.println("Original Message Verification: FAILED");
+        }
+
+        // STEP 5: Modify the message
+        System.out.print("\nEnter modified message: ");
+        String modifiedMessage = sc.nextLine();
+        byte[] modifiedBytes =
+                modifiedMessage.getBytes(StandardCharsets.UTF_8);
+
+        System.out.println("\nModified Message: " + modifiedMessage);
+
+        // STEP 6: Verify Modified Message
+        verifier.initVerify(publicKey);
+        verifier.update(modifiedBytes);
+
+        if (verifier.verify(signature)) {
+            System.out.println("Modified Message Verification: SUCCESS");
+        } else {
+            System.out.println("Modified Message Verification: FAILED");
+            System.out.println("Message modification detected!");
+        }
+
+        System.out.println("\n===== PROGRAM COMPLETED =====");
+        sc.close();
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Assign 9:
+
+import java.io.*;
+import java.net.*;
+import java.nio.file.*;
+import java.security.SecureRandom;
+import java.util.Scanner;
+import javax.crypto.*;
+import javax.crypto.spec.*;
+
+public class SecureImageTransfer {
+
+    static final int PORT = 5000;
+    static final int MAX = 20 * 1024 * 1024; // 20 MB
+    static final Path KEY_FILE = Path.of("secret.key");
+    static final SecureRandom RANDOM = new SecureRandom();
+
+    static byte[] randomBytes(int size) {
+        byte[] bytes = new byte[size];
+        RANDOM.nextBytes(bytes);
+        return bytes;
+    }
+
+    static SecretKeySpec loadKey() throws Exception {
+        byte[] key = Files.readAllBytes(KEY_FILE);
+        if (key.length != 32)
+            throw new IllegalArgumentException("Key must be 32 bytes");
+
+        return new SecretKeySpec(key, "AES");
+    }
+
+    static Cipher cipher(int mode, byte[] nonce,
+                         byte[] challenge) throws Exception {
+        Cipher aes = Cipher.getInstance("AES/GCM/NoPadding");
+        aes.init(mode, loadKey(), new GCMParameterSpec(128, nonce));
+        aes.updateAAD(challenge);
+        return aes;
+    }
+
+    static void sender(Scanner sc) throws Exception {
+        System.out.print("Receiver IP (localhost for same PC): ");
+        String host = sc.nextLine();
+
+        System.out.print("Image path: ");
+        Path file = Path.of(sc.nextLine().replace("\"", ""));
+
+        if (Files.size(file) > MAX)
+            throw new IOException("Image exceeds 20 MB");
+
+        byte[] image = Files.readAllBytes(file);
+        if (image.length > MAX)
+            throw new IOException("Image exceeds 20 MB");
+
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, PORT), 10000);
+            socket.setSoTimeout(15000);
+
+            DataInputStream in =
+                    new DataInputStream(socket.getInputStream());
+            DataOutputStream out =
+                    new DataOutputStream(socket.getOutputStream());
+
+            // Fresh challenge supplied by receiver
+            byte[] challenge = new byte[32];
+            in.readFully(challenge);
+
+            byte[] nonce = randomBytes(12);
+            byte[] encrypted = cipher(
+                    Cipher.ENCRYPT_MODE, nonce, challenge).doFinal(image);
+
+            // Uncomment to demonstrate tampering:
+            encrypted[0] ^= 1;
+
+            out.write(nonce);
+            out.writeInt(encrypted.length);
+            out.write(encrypted);
+            out.flush();
+
+            System.out.println("Encrypted image sent.");
+        }
+    }
+
+    static void receiver(Scanner sc) throws Exception {
+        System.out.print("Save image as (e.g. received.png): ");
+        Path output = Path.of(sc.nextLine().replace("\"", ""));
+
+        try (ServerSocket server = new ServerSocket(PORT)) {
+            System.out.println("Waiting on port " + PORT + "...");
+
+            try (Socket socket = server.accept()) {
+                socket.setSoTimeout(15000);
+
+                DataInputStream in =
+                        new DataInputStream(socket.getInputStream());
+                DataOutputStream out =
+                        new DataOutputStream(socket.getOutputStream());
+
+                // A new challenge binds the image to this connection
+                byte[] challenge = randomBytes(32);
+                out.write(challenge);
+                out.flush();
+
+                byte[] nonce = new byte[12];
+                in.readFully(nonce);
+
+                int length = in.readInt();
+                if (length < 16 || length > MAX + 16)
+                    throw new IOException("Invalid image size");
+
+                byte[] encrypted = new byte[length];
+                in.readFully(encrypted);
+
+                // Rejects wrong keys, tampering and stale challenges
+                byte[] image = cipher(
+                        Cipher.DECRYPT_MODE, nonce, challenge)
+                        .doFinal(encrypted);
+
+                Files.write(output, image,
+                        StandardOpenOption.CREATE_NEW);
+
+                System.out.println("Authentication and integrity verified.");
+                System.out.println("Image saved: " + output);
+            }
+        } catch (AEADBadTagException e) {
+            System.out.println(
+                    "Rejected: wrong key, tampering or replay.");
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        try (Scanner sc = new Scanner(System.in)) {
+            System.out.print("1. Generate key  2. Receive  3. Send: ");
+            String choice = sc.nextLine();
+
+            switch (choice) {
+                case "1":
+                    Files.write(KEY_FILE, randomBytes(32),
+                            StandardOpenOption.CREATE_NEW);
+                    System.out.println("secret.key generated.");
+                    System.out.println(
+                            "Copy it securely to the other computer.");
+                    break;
+                case "2":
+                    receiver(sc);
+                    break;
+                case "3":
+                    sender(sc);
+                    break;
+                default:
+                    System.out.println("Invalid choice");
+            }
+        }
+    }
+}
+
